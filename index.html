@@ -253,6 +253,8 @@ let messages=[],translateQueue=Promise.resolve();
 let ttsQueue=[],isSpeaking=false,currentAudio=null,recPausedForTTS=false;
 let isRecording=false,mediaRecorder=null,recChunks=[],recStream=null,persistentMicStream=null;
 let lastInterim='',lastInterimTime=0;
+let audioUnlocked=false;
+const isIOS=/iPhone|iPad|iPod/.test(navigator.userAgent);
 
 const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
 const langCodes={en:'en-US',ja:'ja-JP',id:'id-ID'};
@@ -271,6 +273,7 @@ window.addEventListener('DOMContentLoaded',async()=>{
   setTimeout(()=>document.getElementById('permOv').classList.add('show'),600);
 });
 async function reqPerm(){
+  unlockAudio();
   const st=document.getElementById('permSt');
   try{await ensureMicStream();st.className='perm-st ok';st.style.display='block';st.textContent='✅ 허용됨!';setTimeout(closePerm,600)}
   catch(e){st.className='perm-st err';st.style.display='block';st.textContent='❌ '+e.message}
@@ -307,8 +310,36 @@ function selLang(btn){
 }
 
 // ── MIC ──
+function unlockAudio(){
+  if(audioUnlocked)return;
+  audioUnlocked=true;
+  // Unlock Web Speech API (iOS requires user gesture)
+  if(window.speechSynthesis){
+    const u=new SpeechSynthesisUtterance('');
+    u.volume=0;u.rate=2;
+    speechSynthesis.speak(u);
+  }
+  // Unlock HTML5 Audio (iOS requires user gesture)
+  try{
+    const ctx=new(window.AudioContext||window.webkitAudioContext)();
+    const buf=ctx.createBuffer(1,1,22050);
+    const src=ctx.createBufferSource();
+    src.buffer=buf;src.connect(ctx.destination);
+    src.start(0);
+    // Keep context for later
+    window._audioCtx=ctx;
+  }catch(e){}
+  // Also pre-load a silent Audio element
+  try{
+    const a=new Audio('data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=');
+    a.volume=0;a.play().then(()=>a.pause()).catch(()=>{});
+  }catch(e){}
+}
+
 async function toggleMic(side){
   if(!SR)return;
+  // ★ iOS: unlock audio on first user tap
+  unlockAudio();
   if(!micPermOk){try{await ensureMicStream()}catch(e){return}}
   if(activeMode===side){stopMic();return}
   if(activeMode)stopMic();
@@ -388,9 +419,18 @@ async function processNextTTS(){
   if(!ttsQueue.length){isSpeaking=false;showSB(false);resumeRec();return}
   isSpeaking=true;const{text,lang}=ttsQueue.shift();
   showSB(true,lang==='ko'?'한국어':langNames[lang]||lang);pauseRec();
-  let used=false;
-  if(selectedGender==='male'){const v=voiceCache[lang+'-male'];if(v){await speakWeb(text,lang,v);used=true}}
-  if(!used){try{await speakGoogle(text,lang)}catch(e){await speakWeb(text,lang,voiceCache[lang+'-female'])}}
+
+  if(isIOS){
+    // ★ iOS: ALWAYS use speechSynthesis (Audio autoplay blocked)
+    const v=voiceCache[lang+'-'+selectedGender]||voiceCache[lang+'-female']||null;
+    await speakWeb(text,lang,v);
+  }else{
+    // Desktop: prefer Google TTS for natural voice, male uses Web Speech
+    let used=false;
+    if(selectedGender==='male'){const v=voiceCache[lang+'-male'];if(v){await speakWeb(text,lang,v);used=true}}
+    if(!used){try{await speakGoogle(text,lang)}catch(e){await speakWeb(text,lang,voiceCache[lang+'-female'])}}
+  }
+
   await new Promise(r=>setTimeout(r,200));processNextTTS();
 }
 function speakWeb(text,lang,voice){
@@ -419,7 +459,7 @@ function stopSpeaking(){ttsQueue=[];if(currentAudio){currentAudio.pause();curren
 function showSB(show,label){const b=document.getElementById('speakBadge');if(show){document.getElementById('speakLang').textContent=(label||'')+' 출력 중…';b.classList.add('show')}else b.classList.remove('show')}
 function pauseRec(){if(!activeMode||!recognition||recPausedForTTS)return;recPausedForTTS=true;try{recognition.stop()}catch(e){}}
 function resumeRec(){if(!activeMode||!recPausedForTTS)return;recPausedForTTS=false;setTimeout(()=>{if(activeMode&&recognition)try{recognition.start()}catch(e){}},200)}
-function replayMsg(idx){if(idx>=messages.length)return;const m=messages[idx];if(!m.translated||m.translated==='…')return;stopSpeaking();ttsQueue.push({text:m.translated,lang:m.side==='ko'?targetLang:'ko'});processNextTTS()}
+function replayMsg(idx){unlockAudio();if(idx>=messages.length)return;const m=messages[idx];if(!m.translated||m.translated==='…')return;stopSpeaking();ttsQueue.push({text:m.translated,lang:m.side==='ko'?targetLang:'ko'});processNextTTS()}
 
 // ── RECORDING ──
 async function toggleRec(){
