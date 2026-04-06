@@ -281,21 +281,46 @@ async function reqPerm(){
 function closePerm(){document.getElementById('permOv').classList.remove('show')}
 
 // ── VOICE LOADING ──
-const VDB={'zira':1,'hazel':1,'susan':1,'samantha':1,'karen':1,'moira':1,'victoria':1,'tessa':1,'kate':1,'jenny':1,'aria':1,'ava':1,'sara':1,'emily':1,'eva':1,'nanami':1,'haruka':1,'sayaka':1,'kyoko':1,'ayumi':1,'heami':1,'sunhi':1,'jiyeon':1,'seoyeon':1,'damayanti':1,'david':0,'james':0,'daniel':0,'mark':0,'alex':0,'fred':0,'thomas':0,'gordon':0,'rishi':0,'george':0,'guy':0,'ryan':0,'sean':0,'otoya':0,'hattori':0,'ichiro':0,'hyunsu':0,'surya':0,'ardi':0};
+// iOS voices: Samantha(F), Alex(M), Kyoko(F), Otoya(M), Yuna(F), Damayanti(F)
+const VDB={'zira':1,'hazel':1,'susan':1,'samantha':1,'karen':1,'moira':1,'victoria':1,'tessa':1,'kate':1,'jenny':1,'aria':1,'ava':1,'sara':1,'emily':1,'eva':1,'nanami':1,'haruka':1,'sayaka':1,'kyoko':1,'ayumi':1,'heami':1,'sunhi':1,'jiyeon':1,'seoyeon':1,'yuna':1,'meijia':1,'damayanti':1,'david':0,'james':0,'daniel':0,'mark':0,'alex':0,'fred':0,'thomas':0,'gordon':0,'rishi':0,'george':0,'guy':0,'ryan':0,'sean':0,'liam':0,'otoya':0,'hattori':0,'ichiro':0,'hyunsu':0,'surya':0,'ardi':0,'tom':0,'lee':0,'ringo':0};
 function detectG(v){const n=v.name.toLowerCase();for(const[k,g]of Object.entries(VDB))if(n.includes(k))return g?'female':'male';if(/\bfemale\b/.test(n))return'female';if(/\bmale\b/.test(n))return'male';if(n.startsWith('google'))return n.includes('male')?'male':'female';return'unknown'}
+
 function loadVoices(){
-  if(!window.speechSynthesis)return;const voices=speechSynthesis.getVoices();if(!voices.length)return;
+  if(!window.speechSynthesis)return;
+  const voices=speechSynthesis.getVoices();
+  if(!voices.length)return;
   voicesLoaded=true;voiceCache={};
+  console.log('[Voices]',voices.map(v=>v.name+' ['+v.lang+'] '+detectG(v)).join(', '));
+
   for(const lang of['en','ja','id','ko']){
-    const lv=voices.filter(v=>v.lang.toLowerCase().startsWith(lang));if(!lv.length)continue;
-    const fm=lv.filter(v=>detectG(v)==='female'),ml=lv.filter(v=>detectG(v)==='male');
-    const rank=v=>{let s=0;const n=v.name.toLowerCase();if(n.includes('natural'))s+=100;if(n.includes('premium'))s+=80;if(!v.localService)s+=50;if(n.includes('google'))s+=30;return s};
+    // Match both "ja" and "ja-JP" and "ja_JP" formats
+    const lv=voices.filter(v=>{
+      const vl=v.lang.toLowerCase().replace('_','-');
+      return vl===lang||vl.startsWith(lang+'-');
+    });
+    if(!lv.length)continue;
+
+    const fm=lv.filter(v=>detectG(v)==='female');
+    const ml=lv.filter(v=>detectG(v)==='male');
+    const rank=v=>{let s=0;const n=v.name.toLowerCase();if(n.includes('enhanced'))s+=90;if(n.includes('natural'))s+=100;if(n.includes('premium'))s+=80;if(!v.localService)s+=50;if(n.includes('google'))s+=30;return s};
     const best=l=>[...l].sort((a,b)=>rank(b)-rank(a));
+
     voiceCache[lang+'-female']=best(fm)[0]||lv[0];
     voiceCache[lang+'-male']=best(ml)[0]||null;
+    // Also store any voice for this language as ultimate fallback
+    voiceCache[lang+'-any']=lv[0];
   }
 }
-if(window.speechSynthesis){loadVoices();speechSynthesis.onvoiceschanged=loadVoices}
+
+// iOS loads voices asynchronously — retry multiple times
+if(window.speechSynthesis){
+  loadVoices();
+  speechSynthesis.onvoiceschanged=loadVoices;
+  // Extra retries for iOS
+  setTimeout(loadVoices,500);
+  setTimeout(loadVoices,1500);
+  setTimeout(loadVoices,3000);
+}
 
 // ── LANGUAGE ──
 function selLang(btn){
@@ -421,26 +446,77 @@ async function processNextTTS(){
   showSB(true,lang==='ko'?'한국어':langNames[lang]||lang);pauseRec();
 
   if(isIOS){
-    // ★ iOS: ALWAYS use speechSynthesis (Audio autoplay blocked)
-    const v=voiceCache[lang+'-'+selectedGender]||voiceCache[lang+'-female']||null;
+    // ★ iOS: ALWAYS use speechSynthesis
+    // Try: selected gender voice → female voice → any voice → no voice (lang only)
+    const v = voiceCache[lang+'-'+selectedGender]
+           || voiceCache[lang+'-female']
+           || voiceCache[lang+'-any']
+           || null;
     await speakWeb(text,lang,v);
   }else{
-    // Desktop: prefer Google TTS for natural voice, male uses Web Speech
     let used=false;
     if(selectedGender==='male'){const v=voiceCache[lang+'-male'];if(v){await speakWeb(text,lang,v);used=true}}
-    if(!used){try{await speakGoogle(text,lang)}catch(e){await speakWeb(text,lang,voiceCache[lang+'-female'])}}
+    if(!used){try{await speakGoogle(text,lang)}catch(e){
+      const v=voiceCache[lang+'-female']||voiceCache[lang+'-any']||null;
+      await speakWeb(text,lang,v);
+    }}
   }
 
   await new Promise(r=>setTimeout(r,200));processNextTTS();
 }
 function speakWeb(text,lang,voice){
   return new Promise(resolve=>{
-    if(!window.speechSynthesis){resolve();return}speechSynthesis.cancel();
-    const u=new SpeechSynthesisUtterance(text);u.lang=lang==='ko'?'ko-KR':(langCodes[lang]||'en-US');
-    u.rate=parseFloat(document.getElementById('spdR').value);u.volume=1;u.pitch=1;if(voice)u.voice=voice;
-    let done=false;const fin=()=>{if(!done){done=true;resolve()}};u.onend=fin;u.onerror=fin;
-    if(text.length>80){const t=setInterval(()=>{if(speechSynthesis.speaking&&speechSynthesis.paused)speechSynthesis.resume()},3000);u.onend=()=>{clearInterval(t);fin()};u.onerror=()=>{clearInterval(t);fin()}}
-    setTimeout(fin,Math.max(12000,text.length*180));speechSynthesis.speak(u);
+    if(!window.speechSynthesis){resolve();return}
+    speechSynthesis.cancel();
+
+    // iOS: reload voices if not loaded yet
+    if(!voicesLoaded&&speechSynthesis.getVoices().length)loadVoices();
+
+    const u=new SpeechSynthesisUtterance(text);
+    u.lang=lang==='ko'?'ko-KR':(langCodes[lang]||'en-US');
+    u.rate=parseFloat(document.getElementById('spdR').value);
+    u.volume=1;u.pitch=1;
+
+    // Set voice if available, otherwise let OS pick by lang
+    if(voice){
+      u.voice=voice;
+    }else{
+      // Try to find ANY voice for this language at runtime
+      const rt=speechSynthesis.getVoices().find(v=>{
+        const vl=v.lang.toLowerCase().replace('_','-');
+        return vl===lang||vl.startsWith(lang+'-');
+      });
+      if(rt)u.voice=rt;
+    }
+
+    let done=false;
+    const fin=()=>{if(!done){done=true;resolve()}};
+    u.onend=fin;
+    u.onerror=(e)=>{console.warn('TTS error:',e);fin()};
+
+    // Chrome/iOS bug: long texts pause randomly
+    let resumeTimer=null;
+    if(text.length>60){
+      resumeTimer=setInterval(()=>{
+        if(speechSynthesis.speaking&&speechSynthesis.paused)speechSynthesis.resume();
+      },2000);
+      u.onend=()=>{clearInterval(resumeTimer);fin()};
+      u.onerror=()=>{clearInterval(resumeTimer);fin()};
+    }
+
+    // Safety timeout
+    setTimeout(()=>{if(resumeTimer)clearInterval(resumeTimer);fin()},Math.max(10000,text.length*200));
+
+    speechSynthesis.speak(u);
+
+    // iOS bug: sometimes speak() does nothing silently — detect and resolve
+    setTimeout(()=>{
+      if(!done&&!speechSynthesis.speaking&&!speechSynthesis.pending){
+        console.warn('TTS silent fail, resolving');
+        if(resumeTimer)clearInterval(resumeTimer);
+        fin();
+      }
+    },1500);
   });
 }
 function speakGoogle(text,tl){
