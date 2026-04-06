@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>동시통역</title>
+
+<!-- iOS PWA -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="동시통역">
+<link rel="apple-touch-icon" href="/icon.svg">
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#080810">
+
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@300;400;500;600;700&family=Noto+Sans+JP:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#080810;--surface:#101018;--surface2:#181824;--surface3:#20202e;
+  --border:#252535;--border-l:#353548;
+  --text:#e4e4f0;--text-dim:#6e6e88;--text-faint:#404058;
+  --ko:#8b9cf7;--en:#4ecdc4;--ja:#ff6b9d;--id:#ffd93d;
+  --glow-en:rgba(78,205,196,.10);--glow-ja:rgba(255,107,157,.10);--glow-id:rgba(255,217,61,.10);
+  --danger:#ff4757;--speaking:#2ed573;--rec:#ff6348;
+  /* iOS safe area */
+  --sat:env(safe-area-inset-top,0px);
+  --sab:env(safe-area-inset-bottom,0px);
+  --sal:env(safe-area-inset-left,0px);
+  --sar:env(safe-area-inset-right,0px);
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html{height:100%;overflow:hidden}
+body{
+  font-family:'IBM Plex Sans KR','Noto Sans JP',sans-serif;
+  background:var(--bg);color:var(--text);
+  height:100%;overflow:hidden;
+  -webkit-overflow-scrolling:touch;
+  overscroll-behavior:none;
+}
+.app{
+  display:flex;flex-direction:column;height:100%;
+  padding:var(--sat) var(--sar) var(--sab) var(--sal);
+  max-width:700px;margin:0 auto;
+}
+
+/* iOS install banner */
+.install-banner{
+  display:none;padding:12px 16px;margin:8px 12px;
+  background:var(--surface2);border:1px solid var(--border);border-radius:12px;
+  font-size:12px;color:var(--text-dim);line-height:1.5;text-align:center;
+  position:relative;
+}
+.install-banner.show{display:block}
+.install-banner b{color:var(--text)}
+.install-banner .close-ib{position:absolute;top:6px;right:10px;background:none;border:none;color:var(--text-faint);font-size:16px;cursor:pointer}
+
+/* Header */
+.header{text-align:center;padding:14px 16px 10px;flex-shrink:0}
+.header h1{font-size:22px;font-weight:700;background:linear-gradient(135deg,var(--ko),var(--en),var(--ja),var(--id));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.header p{color:var(--text-dim);font-size:12px;margin-top:3px}
+
+/* Top bar */
+.top-bar{display:flex;gap:8px;justify-content:center;align-items:center;flex-wrap:wrap;padding:0 12px 10px;flex-shrink:0}
+.lang-btn{padding:10px 18px;border-radius:10px;border:1.5px solid var(--border);background:var(--surface);color:var(--text-dim);font-family:inherit;font-size:13px;font-weight:500;cursor:pointer;transition:all .2s;display:flex;align-items:center;gap:7px}
+.lang-btn .flag{font-size:16px}
+.lang-btn.active-en{border-color:var(--en);color:var(--en);background:var(--glow-en)}
+.lang-btn.active-ja{border-color:var(--ja);color:var(--ja);background:var(--glow-ja)}
+.lang-btn.active-id{border-color:var(--id);color:var(--id);background:var(--glow-id)}
+.sep{color:var(--text-faint);font-size:11px}
+
+/* Settings */
+.settings{display:flex;gap:8px;justify-content:center;align-items:center;flex-wrap:wrap;padding:0 12px 10px;flex-shrink:0}
+.s-btn{padding:8px 14px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--text-dim);font-family:inherit;font-size:12px;cursor:pointer;display:flex;align-items:center;gap:5px}
+.s-btn.on{border-color:var(--speaking);color:var(--speaking);background:rgba(46,213,115,.06)}
+.s-btn.rec-on{border-color:var(--rec);color:var(--rec);background:rgba(255,99,72,.06);animation:rec-pulse 2s infinite}
+@keyframes rec-pulse{0%,100%{box-shadow:none}50%{box-shadow:0 0 12px rgba(255,99,72,.2)}}
+.gender-toggle{display:flex;border-radius:8px;border:1px solid var(--border);overflow:hidden;background:var(--surface)}
+.g-btn{padding:8px 14px;border:none;background:transparent;color:var(--text-dim);font-family:inherit;font-size:12px;cursor:pointer}
+.g-btn:first-child{border-right:1px solid var(--border)}
+.g-btn.active{background:rgba(139,156,247,.1);color:var(--ko)}
+.slider-g{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text-dim)}
+.slider-g input[type=range]{width:55px;accent-color:var(--speaking);height:3px}
+
+/* Mic row — large touch targets for mobile */
+.mic-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:0 12px 10px;flex-shrink:0}
+.mic-col{display:flex;flex-direction:column;align-items:center;gap:8px;padding:14px 10px;background:var(--surface);border:1px solid var(--border);border-radius:14px}
+.mic-col .who{font-size:11px;font-weight:600;letter-spacing:1px;text-transform:uppercase}
+.mic-col .who.ko{color:var(--ko)}.mic-col .who.tgt{color:var(--en)}.mic-col .who.tgt-ja{color:var(--ja)}.mic-col .who.tgt-id{color:var(--id)}
+.mic-circle{
+  width:72px;height:72px;border-radius:50%;border:2.5px solid var(--border);
+  background:var(--surface2);color:var(--text-dim);cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  transition:all .2s;-webkit-touch-callout:none;
+}
+.mic-circle svg{width:28px;height:28px}
+.mic-circle:active{transform:scale(.92)}
+.mic-circle.rec-active{border-color:var(--danger);background:rgba(255,71,87,.08);color:var(--danger);animation:pulse-ring 1.8s ease infinite}
+@keyframes pulse-ring{0%{box-shadow:0 0 0 0 rgba(255,71,87,.25)}70%{box-shadow:0 0 0 14px rgba(255,71,87,0)}100%{box-shadow:0 0 0 0 rgba(255,71,87,0)}}
+.mic-hint{font-size:10px;color:var(--text-faint);text-align:center}
+
+/* Chat area — fills remaining space */
+.chat-area{
+  flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;
+  margin:0 12px 8px;padding:14px;
+  background:var(--surface);border:1px solid var(--border);border-radius:14px;
+  scrollbar-width:thin;scrollbar-color:var(--border) transparent;
+}
+.chat-area::-webkit-scrollbar{width:3px}
+.chat-area::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+.chat-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:var(--text-faint);font-size:13px;gap:8px}
+.msg{margin-bottom:12px;animation:fadeUp .3s ease;display:flex;gap:8px}
+.msg.ko-msg{justify-content:flex-start}.msg.tgt-msg{justify-content:flex-end}
+.msg-avatar{width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0;margin-top:2px}
+.msg.ko-msg .msg-avatar{background:rgba(139,156,247,.12);border:1px solid rgba(139,156,247,.2)}
+.msg.tgt-msg .msg-avatar{background:var(--glow-en);border:1px solid rgba(78,205,196,.2)}
+.msg-bubble{max-width:78%;border-radius:12px;padding:10px 12px}
+.msg.ko-msg .msg-bubble{background:var(--surface2);border:1px solid var(--border)}
+.msg.tgt-msg .msg-bubble{background:var(--surface3);border:1px solid var(--border-l)}
+.msg-original{font-size:14px;line-height:1.6}
+.msg-translated{font-size:13px;line-height:1.5;margin-top:5px;padding-top:5px;border-top:1px solid rgba(255,255,255,.04);opacity:.7}
+.msg-meta{display:flex;align-items:center;gap:6px;margin-top:4px}
+.msg-time{font-size:10px;color:var(--text-faint)}
+.msg-speak{border:none;background:none;color:var(--text-dim);cursor:pointer;font-size:14px;padding:4px;-webkit-touch-callout:none}
+.msg-interim{font-style:italic;color:var(--text-dim);font-size:12px;padding:6px 12px}
+@keyframes fadeUp{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
+
+/* Speaking badge */
+.speak-badge{position:fixed;top:var(--sat,12px);right:12px;z-index:50;padding:8px 14px;border-radius:10px;background:rgba(46,213,115,.1);border:1px solid rgba(46,213,115,.25);color:var(--speaking);font-size:11px;display:flex;align-items:center;gap:6px;opacity:0;transform:translateY(-8px);transition:all .3s;pointer-events:none;margin-top:12px}
+.speak-badge.show{opacity:1;transform:translateY(0)}
+.speak-badge .wave{display:flex;gap:2px;align-items:center;height:14px}
+.speak-badge .wave span{width:2px;border-radius:1px;background:var(--speaking);animation:wbar .8s ease-in-out infinite}
+.speak-badge .wave span:nth-child(1){height:5px;animation-delay:0s}
+.speak-badge .wave span:nth-child(2){height:10px;animation-delay:.15s}
+.speak-badge .wave span:nth-child(3){height:7px;animation-delay:.3s}
+@keyframes wbar{0%,100%{transform:scaleY(.5)}50%{transform:scaleY(1.2)}}
+
+.rec-badge{position:fixed;top:var(--sat,12px);left:12px;z-index:50;padding:8px 14px;border-radius:10px;background:rgba(255,99,72,.1);border:1px solid rgba(255,99,72,.25);color:var(--rec);font-size:11px;display:flex;align-items:center;gap:6px;opacity:0;transition:all .3s;pointer-events:none;margin-top:12px}
+.rec-badge.show{opacity:1}
+.rec-dot{width:6px;height:6px;border-radius:50%;background:var(--rec);animation:blink 1s infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+
+/* Bottom bar */
+.bottom-bar{display:flex;justify-content:space-between;align-items:center;padding:6px 16px;padding-bottom:max(8px,var(--sab));flex-shrink:0;font-size:11px;color:var(--text-dim)}
+.bottom-bar .ab{padding:8px 14px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text-dim);font-family:inherit;font-size:11px;cursor:pointer}
+
+/* Permission modal */
+.perm-ov{position:fixed;inset:0;z-index:100;background:rgba(0,0,0,.7);backdrop-filter:blur(5px);display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:opacity .3s}
+.perm-ov.show{opacity:1;pointer-events:all}
+.perm-box{background:var(--surface2);border:1px solid var(--border);border-radius:18px;padding:32px;max-width:380px;width:90%;text-align:center}
+.perm-box .pi{font-size:44px;margin-bottom:12px}
+.perm-box h2{font-size:17px;font-weight:600;margin-bottom:8px}
+.perm-box p{font-size:13px;color:var(--text-dim);line-height:1.5;margin-bottom:18px}
+.perm-box .pb{padding:14px 30px;border-radius:12px;border:none;background:linear-gradient(135deg,var(--ko),var(--en));color:#000;font-family:inherit;font-size:15px;font-weight:600;cursor:pointer;width:100%}
+.perm-box .ps{display:block;margin-top:10px;background:none;border:none;color:var(--text-dim);font-family:inherit;font-size:12px;cursor:pointer}
+.perm-st{margin-top:12px;font-size:12px;display:none}
+.perm-st.err{display:block;color:var(--danger)}
+.perm-st.ok{display:block;color:#2ed573}
+</style>
+</head>
+<body>
+
+<div class="speak-badge" id="speakBadge">
+  <div class="wave"><span></span><span></span><span></span></div>
+  <span id="speakLang">출력 중…</span>
+</div>
+<div class="rec-badge" id="recBadge"><span class="rec-dot"></span> 녹음 중</div>
+
+<div class="app">
+  <!-- iOS install prompt -->
+  <div class="install-banner" id="installBanner">
+    <button class="close-ib" onclick="this.parentElement.classList.remove('show')">✕</button>
+    Safari 하단 <b>공유 ↑</b> → <b>"홈 화면에 추가"</b>로<br>앱처럼 사용할 수 있습니다
+  </div>
+
+  <div class="header">
+    <h1>양방향 동시통역</h1>
+    <p>한국어 ↔ 외국어 실시간 통역 · 대화 녹음</p>
+  </div>
+
+  <div class="perm-ov" id="permOv">
+    <div class="perm-box">
+      <div class="pi">🎙️</div>
+      <h2>마이크 권한이 필요합니다</h2>
+      <p>양방향 통역을 위해 마이크 접근을 허용해주세요.</p>
+      <button class="pb" onclick="reqPerm()">마이크 권한 허용</button>
+      <button class="ps" onclick="closePerm()">나중에</button>
+      <div class="perm-st" id="permSt"></div>
+    </div>
+  </div>
+
+  <div class="top-bar">
+    <span style="font-size:12px;color:var(--ko)">🇰🇷 한국어</span>
+    <span class="sep">↔</span>
+    <button class="lang-btn active-en" data-lang="en" data-accent="en" onclick="selLang(this)"><span class="flag">🇺🇸</span>English</button>
+    <button class="lang-btn" data-lang="ja" data-accent="ja" onclick="selLang(this)"><span class="flag">🇯🇵</span>日本語</button>
+    <button class="lang-btn" data-lang="id" data-accent="id" onclick="selLang(this)"><span class="flag">🇮🇩</span>Indonesia</button>
+  </div>
+
+  <div class="settings">
+    <button class="s-btn on" id="ttsBtn" onclick="toggleTTS()">🔊 ON</button>
+    <div class="gender-toggle">
+      <button class="g-btn active" id="gF" onclick="setGender('female')">👩</button>
+      <button class="g-btn" id="gM" onclick="setGender('male')">👨</button>
+    </div>
+    <div class="slider-g"><span>속도</span><input type="range" id="spdR" min="0.5" max="1.5" step="0.1" value="1.0"><span id="spdV">1.0</span></div>
+    <button class="s-btn" id="recBtn" onclick="toggleRec()">⏺ 녹음</button>
+  </div>
+
+  <div class="mic-row">
+    <div class="mic-col">
+      <span class="who ko">🇰🇷 나 (한국어)</span>
+      <button class="mic-circle" id="koMic" onclick="toggleMic('ko')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+      </button>
+      <span class="mic-hint" id="koHint">한국어로 말하기</span>
+    </div>
+    <div class="mic-col">
+      <span class="who tgt" id="tgtWho">🇺🇸 상대방 (English)</span>
+      <button class="mic-circle" id="tgtMic" onclick="toggleMic('tgt')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+      </button>
+      <span class="mic-hint" id="tgtHint">외국어로 말하기</span>
+    </div>
+  </div>
+
+  <div class="chat-area" id="chatArea">
+    <div class="chat-empty">💬 마이크 버튼을 눌러 대화를 시작하세요</div>
+  </div>
+
+  <div class="bottom-bar">
+    <div>
+      <button class="ab" onclick="exportChat()">💾 저장</button>
+      <button class="ab" style="margin-left:6px" onclick="clearChat()">✕ 초기화</button>
+    </div>
+    <span id="msgCount">0 메시지</span>
+  </div>
+</div>
+
+<script>
+// ── PWA: service worker + iOS install prompt ──
+if('serviceWorker' in navigator){navigator.serviceWorker.register('/sw.js').catch(()=>{})}
+window.addEventListener('DOMContentLoaded',()=>{
+  const ios=navigator.userAgent.match(/iPhone|iPad|iPod/)&&!navigator.standalone;
+  if(ios)document.getElementById('installBanner').classList.add('show');
+});
+
+// ── STATE ──
+let targetLang='en',targetAccent='en',micPermOk=false;
+let ttsEnabled=true,selectedGender='female';
+let voiceCache={},voicesLoaded=false;
+let activeMode=null,recognition=null,currentInterim='';
+let messages=[],translateQueue=Promise.resolve();
+let ttsQueue=[],isSpeaking=false,currentAudio=null,recPausedForTTS=false;
+let isRecording=false,mediaRecorder=null,recChunks=[],recStream=null,persistentMicStream=null;
+let lastInterim='',lastInterimTime=0;
+
+const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+const langCodes={en:'en-US',ja:'ja-JP',id:'id-ID'};
+const langNames={en:'English',ja:'日本語',id:'Indonesia'};
+const langFlags={en:'🇺🇸',ja:'🇯🇵',id:'🇮🇩'};
+
+// ── PERMISSION ──
+async function ensureMicStream(){
+  if(persistentMicStream?.active)return persistentMicStream;
+  const s=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}});
+  persistentMicStream=s;micPermOk=true;return s;
+}
+window.addEventListener('DOMContentLoaded',async()=>{
+  if(!navigator.mediaDevices?.getUserMedia)return;
+  try{const r=await navigator.permissions.query({name:'microphone'});if(r.state==='granted'){await ensureMicStream();return}}catch(e){}
+  setTimeout(()=>document.getElementById('permOv').classList.add('show'),600);
+});
+async function reqPerm(){
+  const st=document.getElementById('permSt');
+  try{await ensureMicStream();st.className='perm-st ok';st.style.display='block';st.textContent='✅ 허용됨!';setTimeout(closePerm,600)}
+  catch(e){st.className='perm-st err';st.style.display='block';st.textContent='❌ '+e.message}
+}
+function closePerm(){document.getElementById('permOv').classList.remove('show')}
+
+// ── VOICE LOADING ──
+const VDB={'zira':1,'hazel':1,'susan':1,'samantha':1,'karen':1,'moira':1,'victoria':1,'tessa':1,'kate':1,'jenny':1,'aria':1,'ava':1,'sara':1,'emily':1,'eva':1,'nanami':1,'haruka':1,'sayaka':1,'kyoko':1,'ayumi':1,'heami':1,'sunhi':1,'jiyeon':1,'seoyeon':1,'damayanti':1,'david':0,'james':0,'daniel':0,'mark':0,'alex':0,'fred':0,'thomas':0,'gordon':0,'rishi':0,'george':0,'guy':0,'ryan':0,'sean':0,'otoya':0,'hattori':0,'ichiro':0,'hyunsu':0,'surya':0,'ardi':0};
+function detectG(v){const n=v.name.toLowerCase();for(const[k,g]of Object.entries(VDB))if(n.includes(k))return g?'female':'male';if(/\bfemale\b/.test(n))return'female';if(/\bmale\b/.test(n))return'male';if(n.startsWith('google'))return n.includes('male')?'male':'female';return'unknown'}
+function loadVoices(){
+  if(!window.speechSynthesis)return;const voices=speechSynthesis.getVoices();if(!voices.length)return;
+  voicesLoaded=true;voiceCache={};
+  for(const lang of['en','ja','id','ko']){
+    const lv=voices.filter(v=>v.lang.toLowerCase().startsWith(lang));if(!lv.length)continue;
+    const fm=lv.filter(v=>detectG(v)==='female'),ml=lv.filter(v=>detectG(v)==='male');
+    const rank=v=>{let s=0;const n=v.name.toLowerCase();if(n.includes('natural'))s+=100;if(n.includes('premium'))s+=80;if(!v.localService)s+=50;if(n.includes('google'))s+=30;return s};
+    const best=l=>[...l].sort((a,b)=>rank(b)-rank(a));
+    voiceCache[lang+'-female']=best(fm)[0]||lv[0];
+    voiceCache[lang+'-male']=best(ml)[0]||null;
+  }
+}
+if(window.speechSynthesis){loadVoices();speechSynthesis.onvoiceschanged=loadVoices}
+
+// ── LANGUAGE ──
+function selLang(btn){
+  if(activeMode)stopMic();
+  document.querySelectorAll('.lang-btn').forEach(b=>b.className='lang-btn');
+  targetLang=btn.dataset.lang;targetAccent=btn.dataset.accent;
+  btn.classList.add('active-'+targetAccent);
+  const w=document.getElementById('tgtWho');
+  w.textContent=langFlags[targetLang]+' 상대방 ('+langNames[targetLang]+')';
+  w.className='who tgt'+(targetLang==='ja'?'-ja':targetLang==='id'?'-id':'');
+  stopSpeaking();
+}
+
+// ── MIC ──
+async function toggleMic(side){
+  if(!SR)return;
+  if(!micPermOk){try{await ensureMicStream()}catch(e){return}}
+  if(activeMode===side){stopMic();return}
+  if(activeMode)stopMic();
+  startMic(side);
+}
+function startMic(side){
+  activeMode=side;
+  const srcLang=side==='ko'?'ko-KR':langCodes[targetLang];
+  if(recognition&&recognition._lang===srcLang){try{recognition.start();updateMicUI();return}catch(e){}}
+  if(recognition){try{recognition.onend=null;recognition.abort()}catch(e){}}
+  const rec=new SR();rec.lang=srcLang;rec._lang=srcLang;rec.continuous=true;rec.interimResults=true;rec.maxAlternatives=5;
+  rec.onstart=()=>{updateMicUI()};
+  rec.onresult=e=>{
+    let interim='';
+    for(let i=e.resultIndex;i<e.results.length;i++){
+      const r=e.results[i];
+      if(r.isFinal){let best='',bc=-1;for(let a=0;a<r.length;a++){if(r[a].confidence>bc){bc=r[a].confidence;best=r[a].transcript}}
+        const c=cleanText(best.trim());if(!c)continue;
+        if(messages.length>0&&messages[messages.length-1].side===side&&messages[messages.length-1].original===c)continue;
+        addMessage(side,c);
+      }else{let best=r[0].transcript,bc=r[0].confidence||0;for(let a=1;a<r.length;a++){if(r[a].confidence>bc){bc=r[a].confidence;best=r[a].transcript}}interim+=best}
+    }
+    if(interim){lastInterim=interim;lastInterimTime=Date.now()}
+    currentInterim=interim;renderInterim(side);
+  };
+  rec.onerror=e=>{if(e.error==='no-speech'||e.error==='aborted')return;if(e.error==='not-allowed'){activeMode=null;updateMicUI()}};
+  rec.onend=()=>{
+    if(!activeMode||recPausedForTTS)return;
+    if(lastInterim.trim().length>=2&&(Date.now()-lastInterimTime)<2000){
+      const r=cleanText(lastInterim.trim());
+      if(r&&(messages.length===0||messages[messages.length-1].original!==r))addMessage(activeMode,r);
+      lastInterim='';
+    }
+    setTimeout(()=>{if(!activeMode||recPausedForTTS)return;try{rec.start()}catch(e){setTimeout(()=>{if(activeMode&&!recPausedForTTS)try{rec.start()}catch(e2){}},500)}},150);
+  };
+  recognition=rec;try{rec.start()}catch(e){}
+}
+function stopMic(){
+  activeMode=null;
+  if(recognition){recognition.onend=null;recognition.onerror=null;recognition.onresult=null;try{recognition.abort()}catch(e){}recognition=null}
+  currentInterim='';lastInterim='';recPausedForTTS=false;updateMicUI();clearInterim();
+}
+function cleanText(t){return t?t.replace(/\s+/g,' ').replace(/[ㄱ-ㅎㅏ-ㅣ]$/,'').trim():''}
+function updateMicUI(){
+  document.getElementById('koMic').classList.toggle('rec-active',activeMode==='ko');
+  document.getElementById('tgtMic').classList.toggle('rec-active',activeMode==='tgt');
+  document.getElementById('koHint').textContent=activeMode==='ko'?'인식 중… 탭하면 중지':'한국어로 말하기';
+  document.getElementById('tgtHint').textContent=activeMode==='tgt'?'인식 중… 탭하면 중지':'외국어로 말하기';
+}
+
+// ── MESSAGES + TRANSLATE ──
+function addMessage(side,original){
+  const tgtL=side==='ko'?targetLang:'ko';
+  const idx=messages.length;
+  messages.push({side,original,translated:'…',time:new Date().toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'})});
+  renderChat();
+  translateQueue=translateQueue.then(async()=>{
+    const result=await translate(original,side==='ko'?'ko':targetLang,tgtL);
+    if(messages[idx])messages[idx].translated=result;
+    renderChat();
+    if(ttsEnabled)queueSpeak(result,tgtL);
+  });
+}
+async function translate(text,sl,tl){
+  if(!text.trim())return'';
+  const url=`https://translate.googleapis.com/translate_a/single?client=gtx&sl=${sl}&tl=${tl}&dt=t&q=${encodeURIComponent(text)}`;
+  try{const res=await fetch(url);const data=await res.json();if(data?.[0]){let r='';for(const s of data[0])if(s[0])r+=s[0];return r.trim()||'(번역 실패)'}return'(번역 실패)'}
+  catch(e){return'(번역 오류)'}
+}
+
+// ── TTS ──
+function toggleTTS(){ttsEnabled=!ttsEnabled;const b=document.getElementById('ttsBtn');b.classList.toggle('on',ttsEnabled);b.textContent=ttsEnabled?'🔊 ON':'🔇 OFF';if(!ttsEnabled)stopSpeaking()}
+function setGender(g){selectedGender=g;document.getElementById('gF').classList.toggle('active',g==='female');document.getElementById('gM').classList.toggle('active',g==='male')}
+document.getElementById('spdR').addEventListener('input',e=>{document.getElementById('spdV').textContent=parseFloat(e.target.value).toFixed(1)});
+function queueSpeak(text,lang){if(!ttsEnabled||!text||text.startsWith('('))return;ttsQueue.push({text,lang});if(!isSpeaking)processNextTTS()}
+async function processNextTTS(){
+  if(!ttsQueue.length){isSpeaking=false;showSB(false);resumeRec();return}
+  isSpeaking=true;const{text,lang}=ttsQueue.shift();
+  showSB(true,lang==='ko'?'한국어':langNames[lang]||lang);pauseRec();
+  let used=false;
+  if(selectedGender==='male'){const v=voiceCache[lang+'-male'];if(v){await speakWeb(text,lang,v);used=true}}
+  if(!used){try{await speakGoogle(text,lang)}catch(e){await speakWeb(text,lang,voiceCache[lang+'-female'])}}
+  await new Promise(r=>setTimeout(r,200));processNextTTS();
+}
+function speakWeb(text,lang,voice){
+  return new Promise(resolve=>{
+    if(!window.speechSynthesis){resolve();return}speechSynthesis.cancel();
+    const u=new SpeechSynthesisUtterance(text);u.lang=lang==='ko'?'ko-KR':(langCodes[lang]||'en-US');
+    u.rate=parseFloat(document.getElementById('spdR').value);u.volume=1;u.pitch=1;if(voice)u.voice=voice;
+    let done=false;const fin=()=>{if(!done){done=true;resolve()}};u.onend=fin;u.onerror=fin;
+    if(text.length>80){const t=setInterval(()=>{if(speechSynthesis.speaking&&speechSynthesis.paused)speechSynthesis.resume()},3000);u.onend=()=>{clearInterval(t);fin()};u.onerror=()=>{clearInterval(t);fin()}}
+    setTimeout(fin,Math.max(12000,text.length*180));speechSynthesis.speak(u);
+  });
+}
+function speakGoogle(text,tl){
+  return new Promise((resolve,reject)=>{
+    const chunks=splitTTS(text,180);let i=0;
+    function next(){if(i>=chunks.length){resolve();return}
+      const url=`https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=${tl}&q=${encodeURIComponent(chunks[i++])}`;
+      const a=new Audio(url);currentAudio=a;a.volume=1;a.playbackRate=parseFloat(document.getElementById('spdR').value);
+      a.onended=()=>{currentAudio=null;next()};a.onerror=e=>{currentAudio=null;if(i===1)reject(e);else next()};
+      a.play().catch(e=>{currentAudio=null;if(i===1)reject(e);else next()});
+    }next();
+  });
+}
+function splitTTS(t,m){if(t.length<=m)return[t];const ch=[];const ss=t.match(/[^.!?。！？]+[.!?。！？]*/g)||[t];let c='';for(const s of ss){if((c+s).length>m&&c){ch.push(c.trim());c=s}else c+=s}if(c.trim())ch.push(c.trim());return ch}
+function stopSpeaking(){ttsQueue=[];if(currentAudio){currentAudio.pause();currentAudio.src='';currentAudio=null}if(window.speechSynthesis)speechSynthesis.cancel();isSpeaking=false;showSB(false);resumeRec()}
+function showSB(show,label){const b=document.getElementById('speakBadge');if(show){document.getElementById('speakLang').textContent=(label||'')+' 출력 중…';b.classList.add('show')}else b.classList.remove('show')}
+function pauseRec(){if(!activeMode||!recognition||recPausedForTTS)return;recPausedForTTS=true;try{recognition.stop()}catch(e){}}
+function resumeRec(){if(!activeMode||!recPausedForTTS)return;recPausedForTTS=false;setTimeout(()=>{if(activeMode&&recognition)try{recognition.start()}catch(e){}},200)}
+function replayMsg(idx){if(idx>=messages.length)return;const m=messages[idx];if(!m.translated||m.translated==='…')return;stopSpeaking();ttsQueue.push({text:m.translated,lang:m.side==='ko'?targetLang:'ko'});processNextTTS()}
+
+// ── RECORDING ──
+async function toggleRec(){
+  if(isRecording){stopRec();return}
+  try{if(!persistentMicStream?.active)await ensureMicStream();
+    recStream=persistentMicStream.clone();
+    const mimes=['audio/webm;codecs=opus','audio/webm','audio/mp4',''];
+    const mime=mimes.find(m=>!m||MediaRecorder.isTypeSupported(m));
+    mediaRecorder=new MediaRecorder(recStream,mime?{mimeType:mime}:{});
+    recChunks=[];
+    mediaRecorder.ondataavailable=e=>{if(e.data.size>0)recChunks.push(e.data)};
+    mediaRecorder.onstop=()=>{downloadRecording()};
+    mediaRecorder.start(1000);isRecording=true;
+    document.getElementById('recBtn').classList.add('rec-on');document.getElementById('recBtn').textContent='⏹ 중지';
+    document.getElementById('recBadge').classList.add('show');
+  }catch(e){alert('녹음 오류: '+e.message)}
+}
+function stopRec(){
+  if(mediaRecorder?.state!=='inactive')mediaRecorder.stop();
+  if(recStream){recStream.getTracks().forEach(t=>t.stop());recStream=null}
+  isRecording=false;
+  document.getElementById('recBtn').classList.remove('rec-on');document.getElementById('recBtn').textContent='⏺ 녹음';
+  document.getElementById('recBadge').classList.remove('show');
+}
+function downloadRecording(){
+  const ts=new Date().toISOString().slice(0,19).replace(/[T:]/g,'-');
+  if(recChunks.length){const b=new Blob(recChunks,{type:recChunks[0].type||'audio/webm'});const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download='녹음_'+ts+'.webm';a.click();URL.revokeObjectURL(u)}
+  if(messages.length){let txt='=== 동시통역 대화록 ===\n날짜: '+new Date().toLocaleString('ko-KR')+'\n언어: 한국어 ↔ '+langNames[targetLang]+'\n'+'='.repeat(30)+'\n\n';
+    messages.forEach(m=>{txt+=m.time+' '+(m.side==='ko'?'[나/한국어]':'[상대방/'+langNames[targetLang]+']')+'\n  원문: '+m.original+'\n  번역: '+m.translated+'\n\n'});
+    const tb=new Blob([txt],{type:'text/plain;charset=utf-8'});const tu=URL.createObjectURL(tb);const ta=document.createElement('a');ta.href=tu;ta.download='대화록_'+ts+'.txt';setTimeout(()=>{ta.click();URL.revokeObjectURL(tu)},500)}
+}
+
+// ── RENDER ──
+function renderChat(){
+  const area=document.getElementById('chatArea');
+  if(!messages.length){area.innerHTML='<div class="chat-empty">💬 마이크 버튼을 눌러 대화를 시작하세요</div>';return}
+  let html='';
+  messages.forEach((m,i)=>{
+    const isKo=m.side==='ko',avatar=isKo?'🇰🇷':langFlags[targetLang],cls=isKo?'ko-msg':'tgt-msg';
+    const tl=isKo?langFlags[targetLang]:'🇰🇷',ok=m.translated!=='…'&&!m.translated.startsWith('(');
+    html+=`<div class="msg ${cls}">`;
+    if(isKo)html+=`<div class="msg-avatar">${avatar}</div>`;
+    html+=`<div class="msg-bubble"><div class="msg-original">${isKo?'🇰🇷':''} ${esc(m.original)}</div>`;
+    html+=m.translated==='…'?'<div class="msg-translated" style="opacity:.4">번역 중…</div>':`<div class="msg-translated">${tl} ${esc(m.translated)}</div>`;
+    html+=`<div class="msg-meta"><span class="msg-time">${m.time}</span>${ok?`<button class="msg-speak" onclick="replayMsg(${i})">🔊</button>`:''}</div></div>`;
+    if(!isKo)html+=`<div class="msg-avatar">${avatar}</div>`;
+    html+='</div>';
+  });
+  area.innerHTML=html;area.scrollTop=area.scrollHeight;
+  document.getElementById('msgCount').textContent=messages.length+' 메시지';
+}
+function renderInterim(side){
+  if(!currentInterim){clearInterim();return}
+  let el=document.getElementById('interimBubble');
+  if(!el){el=document.createElement('div');el.id='interimBubble';document.getElementById('chatArea').appendChild(el)}
+  el.className='msg-interim';el.style.textAlign=side==='ko'?'left':'right';
+  el.textContent=(side==='ko'?'🇰🇷 ':langFlags[targetLang]+' ')+currentInterim;
+  document.getElementById('chatArea').scrollTop=document.getElementById('chatArea').scrollHeight;
+}
+function clearInterim(){const el=document.getElementById('interimBubble');if(el)el.remove()}
+function esc(t){const d=document.createElement('div');d.textContent=t;return d.innerHTML}
+
+function exportChat(){
+  if(!messages.length)return;
+  let txt='=== 동시통역 대화록 ===\n날짜: '+new Date().toLocaleString('ko-KR')+'\n언어: 한국어 ↔ '+langNames[targetLang]+'\n'+'='.repeat(30)+'\n\n';
+  messages.forEach(m=>{txt+=m.time+' '+(m.side==='ko'?'[나/한국어]':'[상대방/'+langNames[targetLang]+']')+'\n  원문: '+m.original+'\n  번역: '+m.translated+'\n\n'});
+  const b=new Blob([txt],{type:'text/plain;charset=utf-8'});const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;
+  a.download='대화록_'+new Date().toISOString().slice(0,19).replace(/[T:]/g,'-')+'.txt';a.click();URL.revokeObjectURL(u);
+}
+function clearChat(){if(activeMode)stopMic();stopSpeaking();messages=[];currentInterim='';renderChat();document.getElementById('msgCount').textContent='0 메시지'}
+</script>
+</body>
+</html>

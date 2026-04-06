@@ -1,0 +1,13 @@
+{
+  "name": "양방향 동시통역",
+  "short_name": "동시통역",
+  "description": "한국어 ↔ 영어/일본어/인도네시아어 실시간 동시통역",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#080810",
+  "theme_color": "#080810",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}
